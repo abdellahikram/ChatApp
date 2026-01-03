@@ -1,182 +1,197 @@
 src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"
 src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"
 src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"
-const firebaseConfig = {
-            apiKey: "AIzaSyB4vxC_E77us7W8ZResF-QztxsYtd_jIXw",
-            authDomain: "caller-n8fa5t.firebaseapp.com",
-            databaseURL: "https://caller-n8fa5t-default-rtdb.firebaseio.com",
-            projectId: "caller-n8fa5t",
-            storageBucket: "caller-n8fa5t.firebasestorage.app",
-            messagingSenderId: "555965049878",
-            appId: "1:555965049878:web:6e64d012a64e02c1bc1937",
+// Base de données des utilisateurs (côté client)
+const users = {
+    '0562871191': {
+        password: 'AbdallahIkram',
+        name: 'Abdallah',
+        partnerId: '0655843146'
+    },
+    '0655843146': {
+        password: 'AbdallahIkram',
+        name: 'Ikram',
+        partnerId: '0562871191'
+    }
+};
+
+let currentUser = null;
+let messages = [];
+
+// Vérification de l'étape 1 (numéro et mot de passe)
+function checkStep1() {
+    const phoneNumber = document.getElementById('phoneNumber').value.trim();
+    const password = document.getElementById('password').value;
+    const error1 = document.getElementById('error1');
+
+    if (!phoneNumber || !password) {
+        error1.textContent = 'يرجى ملء جميع الحقول';
+        error1.classList.remove('hidden');
+        return;
+    }
+
+    const user = users[phoneNumber];
+    
+    if (!user || user.password !== password) {
+        error1.textContent = 'رقم الهاتف أو كلمة السر غير صحيحة';
+        error1.classList.remove('hidden');
+        return;
+    }
+
+    // Stockage temporaire de l'utilisateur
+    currentUser = phoneNumber;
+    
+    // Passage à l'étape 2
+    document.getElementById('step1Page').classList.add('hidden');
+    document.getElementById('step2Page').classList.remove('hidden');
+    error1.classList.add('hidden');
+}
+
+// Vérification de l'étape 2 (question de sécurité)
+function checkStep2() {
+    const securityAnswer = document.getElementById('securityAnswer').value.trim().toLowerCase();
+    const error2 = document.getElementById('error2');
+
+    if (!securityAnswer) {
+        error2.textContent = 'يرجى إدخال الإجابة';
+        error2.classList.remove('hidden');
+        return;
+    }
+
+    const user = users[currentUser];
+    
+    if (securityAnswer !== user.securityAnswer) {
+        error2.textContent = 'الإجابة غير صحيحة';
+        error2.classList.remove('hidden');
+        return;
+    }
+
+    // Connexion réussie - Charger le chat
+    loadChat();
+    document.getElementById('step2Page').classList.add('hidden');
+    document.getElementById('chatPage').classList.remove('hidden');
+    error2.classList.add('hidden');
+}
+
+// Charger la conversation
+function loadChat() {
+    const user = users[currentUser];
+    document.getElementById('chatTitle').textContent = `💑 Conversation avec ${users[user.partnerId].name}`;
+    
+    // Charger les messages depuis le localStorage
+    const storageKey = getStorageKey(currentUser, user.partnerId);
+    const savedMessages = localStorage.getItem(storageKey);
+    
+    if (savedMessages) {
+        messages = JSON.parse(savedMessages);
+        displayMessages();
+    }
+}
+
+// Obtenir la clé de stockage unique pour la conversation
+function getStorageKey(userId1, userId2) {
+    const ids = [userId1, userId2].sort();
+    return `chat_${ids[0]}_${ids[1]}`;
+}
+
+// Afficher les messages
+function displayMessages() {
+    const messagesContainer = document.getElementById('messages');
+    messagesContainer.innerHTML = '';
+    
+    messages.forEach(msg => {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message');
+        messageDiv.classList.add(msg.sender === currentUser ? 'sent' : 'received');
+        
+        if (msg.type === 'text') {
+            messageDiv.textContent = msg.content;
+        } else if (msg.type === 'file') {
+            const mediaElement = msg.content.startsWith('data:image') 
+                ? `<img src="${msg.content}" style="max-width: 200px; border-radius: 8px;">`
+                : `<video src="${msg.content}" controls style="max-width: 200px; border-radius: 8px;"></video>`;
+            messageDiv.innerHTML = mediaElement;
+        }
+        
+        const timeSpan = document.createElement('span');
+        timeSpan.classList.add('message-time');
+        timeSpan.textContent = msg.time;
+        messageDiv.appendChild(timeSpan);
+        
+        messagesContainer.appendChild(messageDiv);
+    });
+    
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Envoyer un message
+function sendMessage() {
+    const messageInput = document.getElementById('messageInput');
+    const messageText = messageInput.value.trim();
+    
+    if (!messageText) return;
+    
+    const message = {
+        sender: currentUser,
+        type: 'text',
+        content: messageText,
+        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    };
+    
+    messages.push(message);
+    saveMessages();
+    displayMessages();
+    messageInput.value = '';
+}
+
+// Envoyer un fichier
+function sendFile() {
+    const fileInput = document.getElementById('fileInput');
+    const file = fileInput.files[0];
+    
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const message = {
+            sender: currentUser,
+            type: 'file',
+            content: e.target.result,
+            time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
         };
+        
+        messages.push(message);
+        saveMessages();
+        displayMessages();
+        fileInput.value = '';
+    };
+    
+    reader.readAsDataURL(file);
+}
 
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
-        const storage = firebase.storage();
+// Sauvegarder les messages
+function saveMessages() {
+    const user = users[currentUser];
+    const storageKey = getStorageKey(currentUser, user.partnerId);
+    localStorage.setItem(storageKey, JSON.stringify(messages));
+}
 
-        let currentUser = null;
+// Gérer la touche Entrée
+function handleEnter(event) {
+    if (event.key === 'Enter') {
+        sendMessage();
+    }
+}
 
-        // بيانات المستخدمين المصرح لهم
-        const authorizedUsers = {
-            "0123456789": "password123",  // غير هذا برقمك وكلمة السر الحقيقية
-            "0987654321": "password456"   // رقم الزوجة وكلمة السر
-        };
-
-        const correctAnswer = "سعاد و نبيلة";
-
-        function checkStep1() {
-            const phone = document.getElementById('phoneNumber').value.trim();
-            const password = document.getElementById('password').value;
-            const error1 = document.getElementById('error1');
-
-            if (!phone || !password) {
-                error1.textContent = "الرجاء إدخال الرقم وكلمة السر";
-                error1.classList.remove('hidden');
-                return;
-            }
-
-            if (authorizedUsers[phone] && authorizedUsers[phone] === password) {
-                currentUser = phone;
-                error1.classList.add('hidden');
-                document.getElementById('step1Page').classList.add('hidden');
-                document.getElementById('step2Page').classList.remove('hidden');
-            } else {
-                error1.textContent = "رقم أو كلمة سر غير صحيحة";
-                error1.classList.remove('hidden');
-            }
-        }
-
-        function checkStep2() {
-            const answer = document.getElementById('securityAnswer').value.trim();
-            const error2 = document.getElementById('error2');
-
-            if (answer === correctAnswer) {
-                error2.classList.add('hidden');
-                document.getElementById('step2Page').classList.add('hidden');
-                document.getElementById('chatPage').classList.remove('hidden');
-                loadMessages();
-            } else {
-                error2.textContent = "إجابة خاطئة! سيتم إغلاق التطبيق";
-                error2.classList.remove('hidden');
-                
-                setTimeout(() => {
-                    window.close();
-                    window.location.href = 'about:blank';
-                }, 2000);
-            }
-        }
-
-        function logout() {
-            currentUser = null;
-            document.getElementById('chatPage').classList.add('hidden');
-            document.getElementById('step1Page').classList.remove('hidden');
-            document.getElementById('phoneNumber').value = '';
-            document.getElementById('password').value = '';
-            document.getElementById('securityAnswer').value = '';
-        }
-
-        function sendMessage() {
-            const messageInput = document.getElementById('messageInput');
-            const text = messageInput.value.trim();
-            
-            if (text && currentUser) {
-                database.ref('messages').push({
-                    text: text,
-                    sender: currentUser,
-                    timestamp: Date.now(),
-                    type: 'text'
-                });
-                messageInput.value = '';
-            }
-        }
-
-        function sendFile() {
-            const fileInput = document.getElementById('fileInput');
-            const file = fileInput.files[0];
-            
-            if (file && currentUser) {
-                const storageRef = storage.ref('files/' + Date.now() + '_' + file.name);
-                const uploadTask = storageRef.put(file);
-                
-                uploadTask.on('state_changed',
-                    (snapshot) => {},
-                    (error) => {
-                        alert('Erreur lors du téléchargement du fichier');
-                    },
-                    () => {
-                        uploadTask.snapshot.ref.getDownloadURL().then((downloadURL) => {
-                            database.ref('messages').push({
-                                fileURL: downloadURL,
-                                fileType: file.type.startsWith('image') ? 'image' : 'video',
-                                sender: currentUser,
-                                timestamp: Date.now(),
-                                type: 'file'
-                            });
-                        });
-                    }
-                );
-                fileInput.value = '';
-            }
-        }
-
-        function loadMessages() {
-            const messagesRef = database.ref('messages');
-            messagesRef.on('child_added', (snapshot) => {
-                const message = snapshot.val();
-                displayMessage(message);
-            });
-        }
-
-        function displayMessage(message) {
-            const messagesContainer = document.getElementById('messages');
-            const messageDiv = document.createElement('div');
-            const isSent = message.sender === currentUser;
-            
-            messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
-            
-            const bubble = document.createElement('div');
-            bubble.className = 'message-bubble';
-            
-            if (!isSent) {
-                const senderName = document.createElement('div');
-                senderName.className = 'message-sender';
-                senderName.textContent = message.sender;
-                bubble.appendChild(senderName);
-            }
-            
-            if (message.type === 'text') {
-                const textContent = document.createElement('div');
-                textContent.textContent = message.text;
-                bubble.appendChild(textContent);
-            } else if (message.type === 'file') {
-                if (message.fileType === 'image') {
-                    const img = document.createElement('img');
-                    img.src = message.fileURL;
-                    bubble.appendChild(img);
-                } else if (message.fileType === 'video') {
-                    const video = document.createElement('video');
-                    video.src = message.fileURL;
-                    video.controls = true;
-                    bubble.appendChild(video);
-                }
-            }
-            
-            const time = document.createElement('div');
-            time.className = 'message-time';
-            time.textContent = new Date(message.timestamp).toLocaleTimeString('fr-FR', {
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-            bubble.appendChild(time);
-            
-            messageDiv.appendChild(bubble);
-            messagesContainer.appendChild(messageDiv);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
-
-        function handleEnter(event) {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
-        }
+// Déconnexion
+function logout() {
+    currentUser = null;
+    messages = [];
+    
+    document.getElementById('chatPage').classList.add('hidden');
+    document.getElementById('step1Page').classList.remove('hidden');
+    
+    document.getElementById('phoneNumber').value = '';
+    document.getElementById('password').value = '';
+    document.getElementById('securityAnswer').value = '';
+}
